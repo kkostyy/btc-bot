@@ -60,6 +60,7 @@ def bot_keyboard():
     return ReplyKeyboardMarkup([
         [KeyboardButton("▶️ Запустить"), KeyboardButton("⏸ Остановить")],
         [KeyboardButton("💵 Добавить деньги"), KeyboardButton("📋 Ордера и пары")],
+        [KeyboardButton("✅ Выполненные ордера")],
         [KeyboardButton("📊 Статистика"), KeyboardButton("📈 График")],
         [KeyboardButton("📋 Дублировать"), KeyboardButton("⚙️ Настройки")],
         [KeyboardButton("🗑 Удалить"), KeyboardButton("⬅️ Назад")]
@@ -250,6 +251,8 @@ class TradingBot:
             await self._ask_deposit(update, uid)
         elif text == "📋 Ордера и пары":
             await self._show_orders_and_pairs(update, uid)
+        elif text == "✅ Выполненные ордера":
+            await self._show_filled_orders(update, uid)
         elif text == "📊 Статистика":
             await self._show_bot_stats(update, uid)
         
@@ -1030,6 +1033,46 @@ class TradingBot:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=bot_keyboard())
 
     # ─── STATS ────────────────────────────────────────────────────────────
+
+    async def _show_filled_orders(self, update: Update, uid: int):
+        bot_id = self.selected_bot.get(uid)
+        if not bot_id:
+            await self._send(update, uid, "❌ Сначала выберите бота")
+            return
+
+        bot = await self.db.get_bot(bot_id)
+        trades = await self.db.get_recent_trades(bot_id, limit=20)
+        pairs = await self.db.get_bot_pairs(bot_id)
+        closed_pairs = [p for p in pairs if p["status"] == "CLOSED"]
+
+        text = f"✅ *{bot['name']}* — Выполненные ордера\\n"
+        text += "━━━━━━━━━━━━━━━━━━━━\\n\\n"
+
+        if trades:
+            text += "🔄 *Закрытые сделки (симулятор):*\\n"
+            total_profit = 0.0
+            for t in trades:
+                profit = t.get("profit", 0)
+                total_profit += profit
+                profit_str = f"+{TradingBot._usd(profit)}" if profit >= 0 else TradingBot._usd(profit)
+                text += (
+                    f"  📥 ${t['buy_price']:,.1f} → 📤 ${t['sell_price']:,.1f}\\n"
+                    f"     {t['quantity']:.4f} BTC | Прибыль: {profit_str}\\n"
+                )
+            text += f"\\n💰 *Итого прибыль:* {'+' if total_profit >= 0 else ''}{TradingBot._usd(total_profit)}\\n"
+        else:
+            text += "🔄 *Закрытые сделки:* нет\\n"
+
+        if closed_pairs:
+            text += "\\n🔗 *Закрытые пары:*\\n"
+            for p in closed_pairs[:10]:
+                profit_str = f"+{TradingBot._usd(p['profit'])}" if p["profit"] >= 0 else TradingBot._usd(p["profit"])
+                text += f"  ✅ ${p['buy_price']:,.0f} → ${p['sell_price']:,.0f} | {profit_str}\\n"
+
+        if not trades and not closed_pairs:
+            text += "\\nВыполненных ордеров пока нет.\\nЗапустите бота, чтобы начать торговлю."
+
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=bot_keyboard())
 
     async def _show_bot_stats(self, update: Update, uid: int):
         bot_id = self.selected_bot.get(uid)
