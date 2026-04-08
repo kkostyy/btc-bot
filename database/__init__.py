@@ -20,15 +20,15 @@ class DatabaseManager:
         await self.connection.commit()
 
     async def initialize(self):
-    import os
-    db_dir = os.path.dirname(self.db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    self.connection = await aiosqlite.connect(self.db_path)
-    self.connection.row_factory = aiosqlite.Row
-    await self._create_tables()
-    await self._migrate()
-    logger.info("Database initialized")
+        import os
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        self.connection = await aiosqlite.connect(self.db_path)
+        self.connection.row_factory = aiosqlite.Row
+        await self._create_tables()
+        await self._migrate()
+        logger.info("Database initialized")
 
     async def _migrate(self):
         """Add new columns to existing DB if they are missing."""
