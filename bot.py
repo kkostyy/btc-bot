@@ -27,7 +27,9 @@ from simulator.trading_simulator import TradingSimulator
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8503569913:AAEapWqYKVt14kBVnKGLC1WHk2GYym8Jd0A")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is not set")
 # На Railway используем /data для постоянного хранения (Railway Volume).
 # Локально — текущая директория.
 _default_db = os.path.join(os.getenv("DATA_DIR", "."), "telegram_bot.db")

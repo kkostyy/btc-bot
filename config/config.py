@@ -8,7 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Bot configuration
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8503569913:AAEapWqYKVt14kBVnKGLC1WHk2GYym8Jd0A')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is not set")
 
 # Database configuration
 DATABASE_PATH = os.getenv('DATABASE_PATH', 'telegram_bot.db')
