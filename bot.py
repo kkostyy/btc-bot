@@ -479,8 +479,28 @@ class TradingBot:
         elif action == "withdrawal":
             try:
                 amount = float(text.replace(",", "."))
+                if amount <= 0:
+                    raise ValueError
                 self.awaiting.pop(uid)
-                await update.message.reply_text("✅ Вывод " + TradingBot._usd(amount) + " USDT записан", reply_markup=main_keyboard())
+                bot_id = self.selected_bot.get(uid)
+                if bot_id:
+                    bot = await self.db.get_bot(bot_id)
+                    current_balance = bot["balance"] or 0
+                    if amount > current_balance:
+                        await update.message.reply_text(
+                            f"❌ Недостаточно средств!\nБаланс: {TradingBot._usd(current_balance)} USDT",
+                            reply_markup=main_keyboard()
+                        )
+                        return
+                    new_balance = current_balance - amount
+                    await self.db.update_bot(bot_id, balance=new_balance)
+                    await update.message.reply_text(
+                        f"✅ Вывод {TradingBot._usd(amount)} USDT выполнен\n"
+                        f"Новый баланс: {TradingBot._usd(new_balance)} USDT",
+                        reply_markup=main_keyboard()
+                    )
+                else:
+                    await update.message.reply_text("❌ Сначала выберите бота", reply_markup=main_keyboard())
             except ValueError:
                 self.awaiting.pop(uid)
                 await update.message.reply_text("❌ Некорректная сумма", reply_markup=main_keyboard())
@@ -1154,8 +1174,21 @@ class TradingBot:
         profit_day = await self.db.get_profit_since(bot_id, now - timedelta(days=1))
         profit_week = await self.db.get_profit_since(bot_id, now - timedelta(weeks=1))
         profit_month = await self.db.get_profit_since(bot_id, now - timedelta(days=30))
+        profit_year = await self.db.get_profit_since(bot_id, now - timedelta(days=365))
         recent_trades = await self.db.get_recent_trades(bot_id, 5)
         order_usdt = bot.get("order_usdt") or 50
+
+        # Summa — сложение % всех последних сделок × сумму ордера
+        summa_text = ""
+        if recent_trades:
+            percents = [t.get("profit_percent", 0) for t in recent_trades]
+            total_pct = sum(percents)
+            summa_dollars = total_pct / 100 * order_usdt
+            summa_text = "\n💡 *Summa (последние {} сделок):*\n".format(len(percents))
+            for p in percents:
+                summa_text += "  {:.2f}%\n".format(p)
+            summa_text += "  ─────────────\n"
+            summa_text += "  {:.2f}% × {} = *{}*\n".format(total_pct, TradingBot._usd(order_usdt), TradingBot._usd(summa_dollars))
 
         status = "🟢 Работает" if bot["status"] == "running" else "🔴 Остановлен"
 
@@ -1173,14 +1206,18 @@ class TradingBot:
 
         text += (
             "\n💵 Прибыль:\n"
-            "  24ч:    " + TradingBot._usd(profit_day) + "\n"
-            "  7 дней: " + TradingBot._usd(profit_week) + "\n"
+            "  24ч:     " + TradingBot._usd(profit_day) + "\n"
+            "  7 дней:  " + TradingBot._usd(profit_week) + "\n"
             "  30 дней: " + TradingBot._usd(profit_month) + "\n"
-            "  Всего:  " + TradingBot._usd(profit_total) + "\n\n"
+            "  365 дней:" + TradingBot._usd(profit_year) + "\n"
+            "  Всего:   " + TradingBot._usd(profit_total) + "\n\n"
             "Ордеров: " + str(len(orders)) + "  |  Пар: " + str(len(pairs)) + "\n"
         )
         if bot.get("center_price"):
             text += "📍 Центр: $" + "{:,.2f}".format(bot['center_price']) + "\n"
+
+        if summa_text:
+            text += summa_text
 
         if recent_trades:
             text += "\n📜 *Последние сделки:*\n"
@@ -1210,12 +1247,13 @@ class TradingBot:
         now = datetime.now()
         total_balance = sum(b["balance"] for b in bots)
         running = sum(1 for b in bots if b["status"] == "running")
-        p_day = p_week = p_month = p_total = 0.0
+        p_day = p_week = p_month = p_year = p_total = 0.0
 
         for b in bots:
             p_day += await self.db.get_profit_since(b["id"], now - timedelta(days=1))
             p_week += await self.db.get_profit_since(b["id"], now - timedelta(weeks=1))
             p_month += await self.db.get_profit_since(b["id"], now - timedelta(days=30))
+            p_year += await self.db.get_profit_since(b["id"], now - timedelta(days=365))
             p_total += await self.db.get_total_profit(b["id"])
 
         text = (
@@ -1223,10 +1261,11 @@ class TradingBot:
             "Ботов: " + str(len(bots)) + "  |  Работает: " + str(running) + "\n"
             "Баланс: " + TradingBot._usd(total_balance) + " USDT\n\n"
             "Прибыль:\n"
-            "  24ч:    " + TradingBot._usd(p_day) + "\n"
-            "  7 дней: " + TradingBot._usd(p_week) + "\n"
+            "  24ч:     " + TradingBot._usd(p_day) + "\n"
+            "  7 дней:  " + TradingBot._usd(p_week) + "\n"
             "  30 дней: " + TradingBot._usd(p_month) + "\n"
-            "  Всего:  " + TradingBot._usd(p_total) + "\n\n"
+            "  365 дней:" + TradingBot._usd(p_year) + "\n"
+            "  Всего:   " + TradingBot._usd(p_total) + "\n\n"
             "Боты:\n"
         )
         for b in bots:
