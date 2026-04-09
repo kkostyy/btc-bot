@@ -59,18 +59,16 @@ def main_keyboard():
 def bot_keyboard():
     return ReplyKeyboardMarkup([
         [KeyboardButton("▶️ Запустить"), KeyboardButton("⏸ Остановить")],
-        [KeyboardButton("💵 Добавить деньги"), KeyboardButton("📋 Ордера и пары")],
-        [KeyboardButton("✅ Выполненные ордера")],
-        [KeyboardButton("📊 Статистика"), KeyboardButton("📈 График")],
-        [KeyboardButton("📋 Дублировать"), KeyboardButton("⚙️ Настройки")],
-        [KeyboardButton("🗑 Удалить"), KeyboardButton("⬅️ Назад")]
+        [KeyboardButton("📋 Ордера"), KeyboardButton("✅ Выполненные"), KeyboardButton("📊 Статистика")],
+        [KeyboardButton("💵 Пополнить"), KeyboardButton("📈 График")],
+        [KeyboardButton("⚙️ Настройки"), KeyboardButton("⬅️ Назад")]
     ], resize_keyboard=True)
 
 def settings_keyboard():
     return ReplyKeyboardMarkup([
-        [KeyboardButton("🖥 Режим работы"), KeyboardButton("💲 Сумма ордера")],
+        [KeyboardButton("🖥 Режим"), KeyboardButton("⚡ Скорость"), KeyboardButton("💲 Сумма ордера")],
         [KeyboardButton("📝 Переименовать"), KeyboardButton("🔗 Binance API")],
-        [KeyboardButton("🎨 Тема"), KeyboardButton("⏰ Дневной отчёт")],
+        [KeyboardButton("📋 Дублировать"), KeyboardButton("🗑 Удалить")],
         [KeyboardButton("⬅️ Назад к боту")]
     ], resize_keyboard=True)
 
@@ -92,10 +90,18 @@ def mode_keyboard():
         [KeyboardButton("❌ Отмена")]
     ], resize_keyboard=True)
 
-def order_amount_keyboard():
+def speed_keyboard():
     return ReplyKeyboardMarkup([
-        [KeyboardButton("10 USDT"), KeyboardButton("25 USDT")],
-        [KeyboardButton("50 USDT"), KeyboardButton("100 USDT")],
+        [KeyboardButton("🐌 Медленная (x4)")],
+        [KeyboardButton("🐢 Медленная (x2)")],
+        [KeyboardButton("⚙️ Стандартная")],
+        [KeyboardButton("⚡ Быстрая (x2)")],
+        [KeyboardButton("🚀 Супер быстрая (x4)")],
+        [KeyboardButton("❌ Отмена")]
+    ], resize_keyboard=True)
+    return ReplyKeyboardMarkup([
+        [KeyboardButton("📦 10 USDT"), KeyboardButton("📦 25 USDT")],
+        [KeyboardButton("📦 50 USDT"), KeyboardButton("📦 100 USDT")],
         [KeyboardButton("❌ Отмена")]
     ], resize_keyboard=True)
 
@@ -209,19 +215,16 @@ class TradingBot:
             amount = float(text.replace(" USDT", ""))
             await self._process_deposit(update, uid, amount)
             return
-        
-        if text in ["10 USDT", "25 USDT", "50 USDT"]:
+
+        if text in ["📦 10 USDT", "📦 25 USDT", "📦 50 USDT", "📦 100 USDT"]:
             await self._delete_previous(update, uid)
-            amount = float(text.replace(" USDT", ""))
-            # Handle set_order_amount
+            amount = float(text.replace("📦 ", "").replace(" USDT", ""))
             if uid in self.awaiting and self.awaiting[uid] == "set_order_amount":
                 bot_id = self.selected_bot.get(uid)
                 if bot_id:
                     await self.db.update_bot(bot_id, order_usdt=amount)
                 self.awaiting.pop(uid)
                 await self._send(update, uid, "✅ Сумма ордера установлена: " + TradingBot._usd(amount), reply_markup=settings_keyboard())
-            else:
-                await self._process_deposit(update, uid, amount)
             return
 
         await self._delete_previous(update, uid)
@@ -247,22 +250,19 @@ class TradingBot:
             await self._start_bot(update, uid)
         elif text == "⏸ Остановить":
             await self._stop_bot(update, uid)
-        elif text == "💵 Добавить деньги":
+        elif text in ("💵 Добавить деньги", "💵 Пополнить"):
             await self._ask_deposit(update, uid)
-        elif text == "📋 Ордера и пары":
+        elif text in ("📋 Ордера и пары", "📋 Ордера"):
             await self._show_orders_and_pairs(update, uid)
-        elif text == "✅ Выполненные ордера":
+        elif text in ("✅ Выполненные ордера", "✅ Выполненные"):
             await self._show_filled_orders(update, uid)
         elif text == "📊 Статистика":
             await self._show_bot_stats(update, uid)
-        
         elif text == "📈 График":
             await self._show_profit_chart(update, uid)
-        
         elif text == "🤖 AI Анализ":
             await self._show_ai_analysis(update, uid)
-        
-        elif text == "📋 Дублировать":
+        elif text in ("📋 Дублировать",):
             await self._clone_bot(update, uid)
         
         elif text == "⚙️ Настройки":
@@ -284,7 +284,7 @@ class TradingBot:
             )
 
         # Настройки
-        elif text == "🖥 Режим работы":
+        elif text in ("🖥 Режим работы", "🖥 Режим"):
             self.awaiting[uid] = "set_mode"
             bot_id = self.selected_bot.get(uid)
             bot = await self.db.get_bot(bot_id) if bot_id else None
@@ -298,6 +298,23 @@ class TradingBot:
                 parse_mode="Markdown",
                 reply_markup=mode_keyboard()
             )
+        elif text == "⚡ Скорость":
+            bot_id = self.selected_bot.get(uid)
+            bot = await self.db.get_bot(bot_id) if bot_id else None
+            speed = bot.get("sim_speed", 1) if bot else 1
+            speed_labels = {-4: "🐌 Медленная (x4)", -2: "🐢 Медленная (x2)", 1: "⚙️ Стандартная", 2: "⚡ Быстрая (x2)", 4: "🚀 Супер быстрая (x4)"}
+            await update.message.reply_text(
+                f"⚡ *Скорость симулятора*\n\n"
+                f"Текущая: {speed_labels.get(speed, 'Стандартная')}\n\n"
+                f"🐌 *Медленная (x4)* — сделка каждые 2–6 мин\n"
+                f"🐢 *Медленная (x2)* — каждые 1–3 мин\n"
+                f"⚙️ *Стандартная* — каждые 30–90 сек\n"
+                f"⚡ *Быстрая (x2)* — каждые 15–45 сек\n"
+                f"🚀 *Супер быстрая (x4)* — каждые 7–22 сек",
+                parse_mode="Markdown",
+                reply_markup=speed_keyboard()
+            )
+            self.awaiting[uid] = "set_speed"
         elif text == "💲 Сумма ордера":
             self.awaiting[uid] = "set_order_amount"
             bot_id = self.selected_bot.get(uid)
@@ -483,6 +500,32 @@ class TradingBot:
                 reply_markup=settings_keyboard()
             )
 
+        elif action == "set_speed":
+            speed_map = {
+                "🐌 Медленная (x4)": -4,
+                "🐢 Медленная (x2)": -2,
+                "⚙️ Стандартная": 1,
+                "⚡ Быстрая (x2)": 2,
+                "🚀 Супер быстрая (x4)": 4,
+            }
+            new_speed = speed_map.get(text)
+            if new_speed is not None:
+                self.awaiting.pop(uid)
+                bot_id = self.selected_bot.get(uid)
+                if bot_id:
+                    await self.db.update_bot(bot_id, sim_speed=new_speed)
+                    bot = await self.db.get_bot(bot_id)
+                    if bot.get("status") == "running":
+                        await self.simulator.stop_bot_simulation(bot_id)
+                        price = bot.get("center_price") or 100000.0
+                        await self.simulator.start_bot_simulation(bot_id, price, speed=new_speed)
+                await update.message.reply_text(
+                    f"✅ Скорость установлена: {text}",
+                    reply_markup=settings_keyboard()
+                )
+            else:
+                await update.message.reply_text("❓ Выберите скорость из списка:", reply_markup=speed_keyboard())
+
         elif action == "set_mode":
             mode_map = {
                 "🔵 Симулятор": MODE_SIMULATOR,
@@ -509,8 +552,8 @@ class TradingBot:
                 await update.message.reply_text("❓ Выберите режим из списка:", reply_markup=mode_keyboard())
 
         elif action == "set_order_amount":
-            # Quick buttons
-            quick = {"10 USDT": 10, "25 USDT": 25, "50 USDT": 50, "100 USDT": 100}
+            # Quick buttons с префиксом 📦
+            quick = {"📦 10 USDT": 10, "📦 25 USDT": 25, "📦 50 USDT": 50, "📦 100 USDT": 100}
             if text in quick:
                 amount = quick[text]
             else:
@@ -849,8 +892,8 @@ class TradingBot:
 
         count = 0
 
-        # BUY orders — initial 0.175%, step 0.075%
-        buy_price = center_price * (1 - 0.00175)
+        # BUY orders — initial 0.1%, step 0.05%
+        buy_price = center_price * (1 - 0.001)
         for i in range(5):
             try:
                 result = client.place_limit_buy(symbol, round(buy_price, 2), quantity)
@@ -859,10 +902,10 @@ class TradingBot:
                 eid = ""
             await self.db.add_order(bot_id, "BUY", round(buy_price, 2), quantity, eid, "PAIR" + str(i+1))
             count += 1
-            buy_price *= (1 - 0.00075)
+            buy_price *= (1 - 0.0005)
 
-        # SELL orders — initial 0.175%, step 0.095%
-        sell_price = center_price * (1 + 0.00175)
+        # SELL orders — initial 0.1%, step 0.05%
+        sell_price = center_price * (1 + 0.001)
         for i in range(5):
             try:
                 result = client.place_limit_sell(symbol, round(sell_price, 2), quantity)
@@ -871,15 +914,15 @@ class TradingBot:
                 eid = ""
             await self.db.add_order(bot_id, "SELL", round(sell_price, 2), quantity, eid, "PAIR" + str(i+1))
             count += 1
-            sell_price *= (1 + 0.00095)
+            sell_price *= (1 + 0.0005)
 
         # Pairs — match exactly to orders above
-        buy_price2 = center_price * (1 - 0.00175)
-        sell_price2 = center_price * (1 + 0.00175)
+        buy_price2 = center_price * (1 - 0.001)
+        sell_price2 = center_price * (1 + 0.001)
         for i in range(5):
             await self.db.add_pair(bot_id, "PAIR" + str(i+1), round(buy_price2, 2), round(sell_price2, 2), quantity)
-            buy_price2 *= (1 - 0.00075)
-            sell_price2 *= (1 + 0.00095)
+            buy_price2 *= (1 - 0.0005)
+            sell_price2 *= (1 + 0.0005)
 
         return count
 
