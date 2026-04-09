@@ -304,13 +304,14 @@ class TradingBot:
             speed = bot.get("sim_speed", 1) if bot else 1
             speed_labels = {-4: "🐌 Медленная (x4)", -2: "🐢 Медленная (x2)", 1: "⚙️ Стандартная", 2: "⚡ Быстрая (x2)", 4: "🚀 Супер быстрая (x4)"}
             await update.message.reply_text(
-                f"⚡ *Скорость симулятора*\n\n"
-                f"Текущая: {speed_labels.get(speed, 'Стандартная')}\n\n"
-                f"🐌 *Медленная (x4)* — сделка каждые 2–6 мин\n"
-                f"🐢 *Медленная (x2)* — каждые 1–3 мин\n"
-                f"⚙️ *Стандартная* — каждые 30–90 сек\n"
-                f"⚡ *Быстрая (x2)* — каждые 15–45 сек\n"
-                f"🚀 *Супер быстрая (x4)* — каждые 7–22 сек",
+                f"⚡ *Шаг сетки ордеров*\n\n"
+                f"Текущий: {speed_labels.get(speed, 'Стандартная')}\n\n"
+                f"🐌 *Медленная x4* — шаг 0.4% между ордерами\n"
+                f"🐢 *Медленная x2* — шаг 0.2%\n"
+                f"⚙️ *Стандартная* — шаг 0.1%\n"
+                f"⚡ *Быстрая x2* — шаг 0.05% (ордера ближе)\n"
+                f"🚀 *Супер быстрая x4* — шаг 0.025% (максимально близко)\n\n"
+                f"_Чем меньше шаг — тем чаще исполняются ордера_",
                 parse_mode="Markdown",
                 reply_markup=speed_keyboard()
             )
@@ -880,7 +881,6 @@ class TradingBot:
         symbol = bot["symbol"]
         bot_id = bot["id"]
 
-        # Safely get order_usdt — guard against old DB returning string/None
         try:
             order_usdt = float(bot.get("order_usdt") or 50)
         except (TypeError, ValueError):
@@ -890,10 +890,22 @@ class TradingBot:
         if quantity < 0.001:
             quantity = 0.001
 
+        # Шаг сетки зависит от grid_speed
+        # grid_speed: -4=медленная x4, -2=медленная x2, 1=стандарт, 2=быстрая x2, 4=супер x4
+        grid_speed = bot.get("sim_speed") or 1
+        speed_steps = {
+            -4: (0.004, 0.002),   # начальный отступ 0.4%, шаг 0.2%
+            -2: (0.002, 0.001),   # 0.2%, шаг 0.1%
+             1: (0.001, 0.0005),  # 0.1%, шаг 0.05% — стандарт
+             2: (0.0005, 0.00025),# 0.05%, шаг 0.025%
+             4: (0.00025, 0.000125), # 0.025%, шаг 0.0125%
+        }
+        initial_pct, step_pct = speed_steps.get(grid_speed, (0.001, 0.0005))
+
         count = 0
 
-        # BUY orders — initial 0.1%, step 0.05%
-        buy_price = center_price * (1 - 0.001)
+        # BUY orders
+        buy_price = center_price * (1 - initial_pct)
         for i in range(5):
             try:
                 result = client.place_limit_buy(symbol, round(buy_price, 2), quantity)
@@ -902,10 +914,10 @@ class TradingBot:
                 eid = ""
             await self.db.add_order(bot_id, "BUY", round(buy_price, 2), quantity, eid, "PAIR" + str(i+1))
             count += 1
-            buy_price *= (1 - 0.0005)
+            buy_price *= (1 - step_pct)
 
-        # SELL orders — initial 0.1%, step 0.05%
-        sell_price = center_price * (1 + 0.001)
+        # SELL orders
+        sell_price = center_price * (1 + initial_pct)
         for i in range(5):
             try:
                 result = client.place_limit_sell(symbol, round(sell_price, 2), quantity)
@@ -914,15 +926,15 @@ class TradingBot:
                 eid = ""
             await self.db.add_order(bot_id, "SELL", round(sell_price, 2), quantity, eid, "PAIR" + str(i+1))
             count += 1
-            sell_price *= (1 + 0.0005)
+            sell_price *= (1 + step_pct)
 
-        # Pairs — match exactly to orders above
-        buy_price2 = center_price * (1 - 0.001)
-        sell_price2 = center_price * (1 + 0.001)
+        # Pairs
+        buy_price2 = center_price * (1 - initial_pct)
+        sell_price2 = center_price * (1 + initial_pct)
         for i in range(5):
             await self.db.add_pair(bot_id, "PAIR" + str(i+1), round(buy_price2, 2), round(sell_price2, 2), quantity)
-            buy_price2 *= (1 - 0.0005)
-            sell_price2 *= (1 + 0.0005)
+            buy_price2 *= (1 - step_pct)
+            sell_price2 *= (1 + step_pct)
 
         return count
 
