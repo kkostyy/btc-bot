@@ -24,7 +24,7 @@ class TradingSimulator:
         self.bot_prices = {}         # bot_id -> current BTC price
         self.order_counter = {}      # bot_id -> order counter
 
-    async def start_bot_simulation(self, bot_id: int, center_price: float = 100000.0):
+    async def start_bot_simulation(self, bot_id: int, center_price: float = 100000.0, speed: int = 1):
         """Start simulation for a specific bot."""
         if bot_id in self.running_bots:
             logger.info(f"Bot {bot_id} simulation already running")
@@ -33,9 +33,9 @@ class TradingSimulator:
         self.bot_prices[bot_id] = center_price
         self.order_counter[bot_id] = 0
 
-        task = asyncio.create_task(self._simulate_bot(bot_id))
+        task = asyncio.create_task(self._simulate_bot(bot_id, speed))
         self.running_bots[bot_id] = task
-        logger.info(f"Started simulation for bot {bot_id} at price ${center_price:.2f}")
+        logger.info(f"Started simulation for bot {bot_id} at price ${center_price:.2f}, speed x{speed}")
 
     async def stop_bot_simulation(self, bot_id: int):
         """Stop simulation for a specific bot."""
@@ -49,17 +49,24 @@ class TradingSimulator:
         for bot_id in list(self.running_bots.keys()):
             await self.stop_bot_simulation(bot_id)
 
-    async def _simulate_bot(self, bot_id: int):
+    async def _simulate_bot(self, bot_id: int, speed: int = 1):
         """
-        Main simulation loop for a bot.
-        Generates trades every 30-90 seconds.
+        speed > 0: быстрее стандарта (x2, x4)
+        speed = 1: стандарт (30-90 сек)
+        speed < 0: медленнее стандарта (-2: x2 медленнее, -4: x4 медленнее)
         """
-        logger.info(f"Bot {bot_id} simulation loop started")
+        logger.info(f"Bot {bot_id} simulation loop started, speed x{speed}")
+        if speed > 0:
+            base_min = max(7, 30 // speed)
+            base_max = max(22, 90 // speed)
+        else:
+            factor = abs(speed)
+            base_min = 30 * factor
+            base_max = 90 * factor
 
         while True:
             try:
-                # Wait random time between 30 and 90 seconds
-                wait_time = random.randint(30, 90)
+                wait_time = random.randint(base_min, base_max)
                 await asyncio.sleep(wait_time)
 
                 # Check if bot is still running in DB
