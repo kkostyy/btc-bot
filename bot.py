@@ -146,17 +146,17 @@ class TradingBot:
         if mode == MODE_SIMULATOR:
             return MockBinanceClient()
         elif mode == MODE_TESTNET:
-            if bot.get("api_key") and bot.get("secret_key"):
-                return BinanceTestnetClient(bot["api_key"], bot["secret_key"])
-            elif BINANCE_API_KEY and BINANCE_SECRET:
+            # Use global API credentials for all bots in testnet mode
+            if BINANCE_API_KEY and BINANCE_SECRET:
                 return BinanceTestnetClient(BINANCE_API_KEY, BINANCE_SECRET)
             else:
                 return MockBinanceClient()
         else:  # real
-            if bot.get("api_key") and bot.get("secret_key"):
+            # Use global API credentials for all bots in real mode
+            if BINANCE_API_KEY and BINANCE_SECRET:
                 from binance_client import BinanceRealClient
                 try:
-                    return BinanceRealClient(bot["api_key"], bot["secret_key"])
+                    return BinanceRealClient(BINANCE_API_KEY, BINANCE_SECRET)
                 except Exception:
                     pass
             return MockBinanceClient()
